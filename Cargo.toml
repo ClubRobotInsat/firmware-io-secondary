@@ -24,7 +24,7 @@ version = "0.5"
 
 [dependencies.cortex-m-rt]
 features = ["device"]
-version = "0.6"
+version = "0.6.7"
 
 [dependencies.cortex-m-semihosting]
 version = "0.3.0"
@@ -41,10 +41,11 @@ version = "1.0.1"
 
 [dependencies.stm32f1xx-hal]
 features = ["rt","stm32f103"]
-git = "https://github.com/stm32-rs/stm32f1xx-hal"
+path = "/home/paul/repos/robot/rust/stm32f1xx-hal"
 
 [profile.release]
 codegen-units = 1
 debug = true
-lto = true
+lto = false
 incremental = false
+opt-level = 1

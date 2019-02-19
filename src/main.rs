@@ -5,9 +5,8 @@
 #![no_std] //  Don't use the Rust standard library. We are building a binary that can run on its own.
 #[macro_use]
 extern crate cortex_m; //  Low-level functions for ARM Cortex-M3 processor in STM32 Blue Pill.
-#[macro_use(entry, exception)] //  Import macros from the following crates,
-extern crate cortex_m_rt; //  Startup and runtime functions for ARM Cortex-M3.
 extern crate arrayvec;
+extern crate cortex_m_rt; //  Startup and runtime functions for ARM Cortex-M3.
 extern crate cortex_m_semihosting; //  Debug console functions for ARM Cortex-M3.
 extern crate embedded_hal;
 extern crate librobot;
@@ -16,18 +15,26 @@ extern crate numtoa;
 extern crate panic_semihosting; //  Panic reporting functions, which transmit to the debug console.
 extern crate pid_control;
 extern crate qei;
+
 extern crate stm32f1xx_hal as bluepill_hal; //  Hardware Abstraction Layer (HAL) for STM32 Blue Pill.
+
+use stm32f1xx_hal::stm32f1::stm32f103::interrupt;
+
 use crate::bluepill_hal::stm32 as f103;
+
+use cortex_m_rt::{entry, exception};
 
 use core::fmt::Write;
 
 use cortex_m::Peripherals as CortexPeripherals;
 
+use crate::bluepill_hal::delay::Delay;
 use crate::bluepill_hal::prelude::*; //  Define HAL traits.
+use crate::bluepill_hal::pwm_input::*;
 use crate::bluepill_hal::qei::Qei;
 use crate::bluepill_hal::serial::Serial;
-use crate::f103::Peripherals;
 use crate::bluepill_hal::time::Hertz;
+use crate::f103::Peripherals;
 
 use cortex_m::asm;
 use cortex_m_semihosting::hio; //  For displaying messages on the debug console. //  Clocks, flash memory, GPIO for the STM32 Blue Pill.
@@ -41,79 +48,53 @@ use librobot::units::MilliMeter;
 
 use numtoa::NumToA;
 
-//  Black Pill starts execution at function main().
+// Black Pill starts execution at function main().
+// interrupt!(TIM3, tim3);
 
 #[entry]
 fn main() -> ! {
     let bluepill = Peripherals::take().unwrap();
-    let _cortex = CortexPeripherals::take().unwrap();
-    //let mut debug_out = hio::hstdout().unwrap();
+    let cortex = CortexPeripherals::take().unwrap();
+    let _debug_out = hio::hstdout().unwrap();
+
+    let mut dbg = bluepill.DBG;
+
+    //cortex.NVIC.enable(stm32f1xx_hal::stm32::Interrupt::TIM3);
 
     // Config des horloges
     let mut rcc = bluepill.RCC.constrain();
     let mut flash = bluepill.FLASH.constrain();
     let mut afio = bluepill.AFIO.constrain(&mut rcc.apb2);
-    let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
+    let clocks = rcc
+        .cfgr
+        .use_hse(8.mhz())
+        .sysclk(72.mhz())
+        .pclk1(36.mhz())
+        .pclk2(72.mhz())
+        .freeze(&mut flash.acr);
+
+    let _delay = Delay::new(cortex.SYST, clocks);
     // Config du GPIO
     let mut gpiob = bluepill.GPIOB.split(&mut rcc.apb2);
-    let mut gpioa = bluepill.GPIOA.split(&mut rcc.apb2);
-    let pa0 = gpioa.pa0; // floating input
-    let pa1 = gpioa.pa1; // floating input
+    let _gpioa = bluepill.GPIOA.split(&mut rcc.apb2);
 
-    {
-        let mut pa8 = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
-        pa8.set_high();
-    }
-
-    let pb0 = gpiob.pb0.into_alternate_push_pull(&mut gpiob.crl);
-    let pb1 = gpiob.pb1.into_alternate_push_pull(&mut gpiob.crl);
-    let pb6 = gpiob.pb6; // floating input
-    let pb7 = gpiob.pb7; // floating input
     let pb10 = gpiob.pb10.into_alternate_push_pull(&mut gpiob.crh);
     let pb11 = gpiob.pb11.into_floating_input(&mut gpiob.crh);
-    let left_engine_dir_pb8 = gpiob.pb8.into_push_pull_output(&mut gpiob.crh);
-    let right_engine_dir_pb9 = gpiob.pb9.into_push_pull_output(&mut gpiob.crh);
+    let _ = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
+    let _ = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
 
-    // Config des QEI
-    let _qei_right = QeiManager::new(Qei::tim2(
-        bluepill.TIM2,
-        (pa0, pa1),
-        &mut afio.mapr,
-        &mut rcc.apb1,
-    ));
-    let _qei_left = QeiManager::new(Qei::tim4(
-        bluepill.TIM4,
-        (pb6, pb7),
-        &mut afio.mapr,
-        &mut rcc.apb1,
-    ));
+    let pb4 = gpiob.pb4.into_alternate_open_drain(&mut gpiob.crl);
+    let pb5 = gpiob.pb5.into_alternate_open_drain(&mut gpiob.crl);
 
-    // Config des PWM
-    let (mut pwm_right_pb0, mut pwm_left_pb1) = bluepill.TIM3.pwm(
-        (pb0, pb1),
-        &mut afio.mapr,
-        Hertz(10000),
-        clocks,
+    let timer = bluepill.TIM3.pwm_input(
+        (pb4, pb5),
         &mut rcc.apb1,
+        &mut afio.mapr,
+        &mut dbg,
+        &clocks,
+        Configuration::Frequency(10.khz()),
     );
-    pwm_right_pb0.enable();
-    pwm_left_pb1.enable();
-    let max_duty = pwm_right_pb0.get_max_duty();
-
-    let _motor_left = Motor::new(pwm_left_pb1, left_engine_dir_pb8);
-    let _motor_right = Motor::new(pwm_right_pb0, right_engine_dir_pb9);
-
-    // Config du PID
-    let _pid_parameters = PIDParameters {
-        coder_radius: MilliMeter(31),
-        inter_axial_length: MilliMeter(223),
-        pos_kp: 1.0,
-        pos_kd: 1.0,
-        orient_kp: 1.0,
-        orient_kd: 1.0,
-        max_output: max_duty / 4,
-    };
 
     let serial = Serial::usart3(
         bluepill.USART3,
@@ -124,33 +105,64 @@ fn main() -> ! {
         &mut rcc.apb1,
     );
 
-    let (_debug, _) = serial.split();
+    let (mut ser, _) = serial.split();
 
-    //let mut pos_pid = RealWorldPid::new(qei_left, qei_right, &pid_parameters);
+    let mut buffer_freq = [0u8; 64];
+    let mut buffer_duty = [0u8; 64];
 
-    //pos_pid.forward(MilliMeter(50));
+    let str1 = b"Freq : ";
+    let sep = b" | ";
+    let str2 = b"Duty : ";
+    let end = b"\n";
 
     loop {
-        /*
-        let (cmd_left, cmd_right) = pos_pid.update();
-        let (pos_left, pos_right) = pos_pid.get_qei_ticks();
-        let (wanted_left, wanted_right) = pos_pid.get_qei_goal();
-        //pos_pid.print_qei_state(&mut debug_out);
+        let (duty, period) = timer.read_duty(ReadMode::Instant).unwrap();
+        let freq = timer.read_frequency(ReadMode::Instant, &clocks).unwrap().0;
+        let percent = 100.0 * (duty as f32 / period as f32);
+        let duty_indices = (percent as u16).numtoa(10, &mut buffer_duty);
+        let freq_indices = freq.numtoa(10, &mut buffer_freq);
 
-        write!(
-            &mut debug,
-            "----------------------\n\rQei - Left : {}, Right:{}\n\rPid - Left : {}, Right : {}\n\rCommand - Left : [{}], Right : [{}]\n\r",
-            pos_left, pos_right, wanted_left, wanted_right,cmd_left,cmd_right
-        )
-        .unwrap();
-
-        motor_left.apply_command(cmd_left);
-        motor_right.apply_command(cmd_right);
-        */
+        for b in str1
+            .iter()
+            .chain(freq_indices.iter())
+            .chain(sep.iter())
+            .chain(str2.iter())
+            .chain(duty_indices.iter())
+            .chain(end.iter())
+        {
+            ser.write(*b).expect("Failed to send data");
+        }
     }
 }
 
 //  For any hard faults, show a message on the debug console and stop.
+
+#[interrupt]
+fn TIM3() {
+    static mut HIGH_CAPTURE: bool = false;
+    static mut HIGH_ARR: bool = false;
+    unsafe {
+        let capture = (*f103::TIM3::ptr()).sr.read().cc1if();
+
+        if capture.bit_is_set() {
+            if *HIGH_CAPTURE {
+                (*f103::GPIOB::ptr()).bsrr.write(|w| w.br13().set_bit());
+            } else {
+                (*f103::GPIOB::ptr()).bsrr.write(|w| w.bs13().set_bit());
+            }
+            (*f103::TIM3::ptr()).sr.write(|w| w.cc1if().clear_bit());
+            *HIGH_CAPTURE = !(*HIGH_CAPTURE);
+        } else {
+            if *HIGH_ARR {
+                (*f103::GPIOB::ptr()).bsrr.write(|w| w.br14().set_bit());
+            } else {
+                (*f103::GPIOB::ptr()).bsrr.write(|w| w.bs14().set_bit());
+            }
+            *HIGH_ARR = !(*HIGH_ARR);
+        }
+        (*f103::TIM3::ptr()).sr.write(|w| w.uif().clear_bit());
+    }
+}
 
 #[exception]
 fn HardFault(ef: &ExceptionFrame) -> ! {
