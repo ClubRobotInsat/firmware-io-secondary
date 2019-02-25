@@ -24,6 +24,8 @@ use crate::bluepill_hal::stm32 as f103;
 
 use cortex_m_rt::{entry, exception};
 
+use nb::block;
+
 use core::fmt::Write;
 
 use cortex_m::Peripherals as CortexPeripherals;
@@ -67,22 +69,21 @@ fn main() -> ! {
     let mut afio = bluepill.AFIO.constrain(&mut rcc.apb2);
 
     let clocks = rcc
-        .cfgr
+        .cfgr /*
         .use_hse(8.mhz())
         .sysclk(72.mhz())
         .pclk1(36.mhz())
-        .pclk2(72.mhz())
+        .pclk2(72.mhz())*/
         .freeze(&mut flash.acr);
 
     let _delay = Delay::new(cortex.SYST, clocks);
+
     // Config du GPIO
     let mut gpiob = bluepill.GPIOB.split(&mut rcc.apb2);
     let _gpioa = bluepill.GPIOA.split(&mut rcc.apb2);
 
     let pb10 = gpiob.pb10.into_alternate_push_pull(&mut gpiob.crh);
     let pb11 = gpiob.pb11.into_floating_input(&mut gpiob.crh);
-    let _ = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
-    let _ = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
 
     let pb4 = gpiob.pb4.into_alternate_open_drain(&mut gpiob.crl);
     let pb5 = gpiob.pb5.into_alternate_open_drain(&mut gpiob.crl);
@@ -93,7 +94,7 @@ fn main() -> ! {
         &mut afio.mapr,
         &mut dbg,
         &clocks,
-        Configuration::Frequency(10.khz()),
+        Configuration::Frequency(1.mhz()),
     );
 
     let serial = Serial::usart3(
@@ -111,26 +112,37 @@ fn main() -> ! {
     let mut buffer_duty = [0u8; 64];
 
     let str1 = b"Freq : ";
+    //let str1 = b'A';
     let sep = b" | ";
     let str2 = b"Duty : ";
-    let end = b"\n";
+    let end = b"\n\r";
 
     loop {
-        let (duty, period) = timer.read_duty(ReadMode::Instant).unwrap();
-        let freq = timer.read_frequency(ReadMode::Instant, &clocks).unwrap().0;
-        let percent = 100.0 * (duty as f32 / period as f32);
-        let duty_indices = (percent as u16).numtoa(10, &mut buffer_duty);
-        let freq_indices = freq.numtoa(10, &mut buffer_freq);
+        match (
+            timer.read_duty(ReadMode::Instant),
+            timer.read_frequency(ReadMode::Instant, &clocks),
+        ) {
+            (Ok((duty, period)), Ok(freq)) => {
+                let percent = 100.0 * (duty as f32 / period as f32);
+                let duty_indices = (percent as u16).numtoa(10, &mut buffer_duty);
+                let freq_indices = freq.0.numtoa(10, &mut buffer_freq);
 
-        for b in str1
-            .iter()
-            .chain(freq_indices.iter())
-            .chain(sep.iter())
-            .chain(str2.iter())
-            .chain(duty_indices.iter())
-            .chain(end.iter())
-        {
-            ser.write(*b).expect("Failed to send data");
+                for b in str1
+                    .iter()
+                    .chain(freq_indices.iter())
+                    .chain(sep.iter())
+                    .chain(str2.iter())
+                    .chain(duty_indices.iter())
+                    .chain(end.iter())
+                {
+                    block!(ser.write(*b)).expect("Failed to send data");
+                }
+            }
+            _ => {
+                for b in b"Invalid Frequency\n" {
+                    block!(ser.write(*b)).expect("Failed to send data");
+                }
+            }
         }
     }
 }
