@@ -29,13 +29,16 @@ pub struct Robot<K, P> {
     pub cs: PB13<Output<PushPull>>,
 }
 
-pub fn init_peripherals(chip: Peripherals, cortex: CortexPeripherals) -> Robot<SPI1, SpiPins> {
+pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Robot<SPI1, SpiPins> {
     //  Get the clocks from the STM32 Reset and Clock Control (RCC) and freeze the Flash Access Control Register (ACR).
     let _dbg = chip.DBG;
     // Config des horloges
     let mut rcc = chip.RCC.constrain();
     let mut flash = chip.FLASH.constrain();
     let mut afio = chip.AFIO.constrain(&mut rcc.apb2);
+
+    cortex.DCB.enable_trace();
+    cortex.DWT.enable_cycle_counter();
 
     let clocks = rcc
         .cfgr
