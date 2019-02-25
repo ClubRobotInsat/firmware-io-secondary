@@ -121,7 +121,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "librobot"
 version = "0.2.0"
-source = "git+https://github.com/ClubRobotInsat/librobot#bff453b2a495c10fd14f28efb78b345b1acc9ec6"
+source = "git+https://github.com/ClubRobotInsat/librobot#788ae252230b8595c7b252f7f4a860865ac5dccb"
 dependencies = [
  "arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -277,6 +277,7 @@ dependencies = [
  "pid_control 0.7.2 (git+https://github.com/gbip/pid_control-rs?branch=genericity)",
  "qei 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "stm32f1xx-hal 0.2.0 (git+https://github.com/stm32-rs/stm32f1xx-hal)",
+ "w5500 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -293,7 +294,7 @@ dependencies = [
 [[package]]
 name = "stm32f1xx-hal"
 version = "0.2.0"
-source = "git+https://github.com/stm32-rs/stm32f1xx-hal#4de108952306e85fb896af461e03c4286b138b10"
+source = "git+https://github.com/stm32-rs/stm32f1xx-hal#a313678cd4de5d43a0e58b17bbe15dfc08348ec9"
 dependencies = [
  "cast 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "cortex-m 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)",
