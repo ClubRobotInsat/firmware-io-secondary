@@ -12,7 +12,8 @@ use crate::hal::spi::*;
 use crate::hal::timer::Timer;
 use crate::CortexPeripherals;
 use cortex_m_rt::exception;
-use cortex_m_rt::ExceptionFrame; //  Stack frame for exception handling.
+use cortex_m_rt::ExceptionFrame;
+use stm32f1xx_hal::gpio::PullDown; //  Stack frame for exception handling.
 
 type SpiPins = (
     PA5<Alternate<PushPull>>,
@@ -23,10 +24,12 @@ type SpiPins = (
 pub struct Robot<K, P> {
     pub spi_eth: Spi<K, P>,
     pub delay: Delay,
-    pub led_black_pill: PC13<Output<PushPull>>,
+    pub led_feedback: PC14<Output<PushPull>>,
+    pub led_communication: PC15<Output<PushPull>>,
     pub pumps: PB0<Output<PushPull>>,
-    pub vannes: [PBx<Output<PushPull>>; 8],
+    pub valves: [PBx<Output<PushPull>>; 8],
     pub cs: PB13<Output<PushPull>>,
+    pub tirette: PA0<Input<PullDown>>,
 }
 
 pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Robot<SPI1, SpiPins> {
@@ -81,10 +84,13 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
         let mut pin = gpiob.pb7.into_push_pull_output(&mut gpiob.crl);
         pin.set_low();
         // Blinking led
-        let mut led = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
+        let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
         led.set_low();
     }
-    let led_black_pill = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
+    let led_feedback = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
+    let led_communication = gpioc.pc15.into_push_pull_output(&mut gpioc.crh);
+
+    let tirette = gpioa.pa0.into_pull_down_input(&mut gpioa.crl);
 
     let spi = Spi::spi1(
         chip.SPI1,
@@ -108,10 +114,12 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
     Robot {
         spi_eth: spi,
         delay,
-        led_black_pill,
+        led_feedback,
+        led_communication,
         pumps,
-        vannes,
+        valves: vannes,
         cs,
+        tirette,
     }
 }
 
@@ -120,9 +128,9 @@ fn TIM3() {
     static mut TOOGLE: bool = false;
     unsafe {
         if *TOOGLE {
-            (*f103::GPIOC::ptr()).bsrr.write(|w| w.br14().set_bit());
+            (*f103::GPIOC::ptr()).bsrr.write(|w| w.br13().set_bit());
         } else {
-            (*f103::GPIOC::ptr()).bsrr.write(|w| w.bs14().set_bit());
+            (*f103::GPIOC::ptr()).bsrr.write(|w| w.bs13().set_bit());
         }
         *TOOGLE = !(*TOOGLE);
         (*f103::TIM3::ptr()).sr.write(|w| w.uif().clear_bit());

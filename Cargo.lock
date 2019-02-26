@@ -121,7 +121,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "librobot"
 version = "0.2.0"
-source = "git+https://github.com/ClubRobotInsat/librobot#788ae252230b8595c7b252f7f4a860865ac5dccb"
+source = "git+https://github.com/ClubRobotInsat/librobot#5cfb226b0241051ba4183a05199c570c0d664e30"
 dependencies = [
  "arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "cc 1.0.29 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -270,6 +270,7 @@ dependencies = [
  "cortex-m-rt 0.6.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "cortex-m-semihosting 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-hal 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "heapless 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "librobot 0.2.0 (git+https://github.com/ClubRobotInsat/librobot)",
  "nb 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "numtoa 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
