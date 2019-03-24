@@ -16,6 +16,7 @@ numtoa = "0.2.3"
 librobot = {git="https://github.com/ClubRobotInsat/librobot"}
 w5500 = "0.1.5"
 heapless = "0.4.2"
+pwm-speaker = {git="https://github.com/gbip/pwm-speaker" }
 
 [dependencies.arrayvec]
 default-features = false

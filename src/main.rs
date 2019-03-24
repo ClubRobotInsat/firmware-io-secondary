@@ -1,5 +1,6 @@
 #![no_main]
 #![no_std]
+#![allow(unused_imports)]
 
 use crate::f103::Peripherals;
 use crate::hal::stm32 as f103;
@@ -12,12 +13,16 @@ use stm32f1xx_hal as hal;
 use w5500::*;
 mod robot;
 use crate::robot::init_peripherals;
+use cortex_m::asm;
 use heapless::consts::U2048;
+use librobot::transmission::io::BuzzerState;
+use librobot::transmission::io::Pneumatic;
 use librobot::transmission::{
     eth::{init_eth, SOCKET_UDP},
     io::{IOState, TriggerState, IO},
     Jsonizable,
 };
+use pwm_speaker::songs::*;
 
 #[entry]
 fn main() -> ! {
@@ -32,80 +37,152 @@ fn main() -> ! {
         &IpAddress::new(192, 168, 0, 222),
     );
 
-    let mut buffer = [0; 2048];
+    let mut buffer = [0u8; 2048];
+
+    let mut buzzer_state = BuzzerState::Rest;
 
     loop {
         if let Ok(Some((ip, port, size))) =
             eth.try_receive_udp(&mut robot.spi_eth, SOCKET_UDP, &mut buffer)
         {
-            let _id = buffer[0];
+            let id = buffer[0];
 
-            match IO::from_json_slice(&buffer[1..size]) {
-                Ok(io) => {
-                    robot.led_communication.set_low();
+            match id {
+                4 => {
+                    use BuzzerState::*;
+                    match IO::from_json_slice(&buffer[1..size]) {
+                        Ok(pneum) => {
+                            robot.led_communication.set_low();
+                            match (pneum.buzzer, buzzer_state) {
+                                (PlayErrorSound, Rest) => {
+                                    robot
+                                        .speaker
+                                        .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
+                                    buzzer_state = PlayErrorSound;
+                                }
+                                (PlaySuccessSound, Rest) => {
+                                    robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
+                                    buzzer_state = PlaySuccessSound;
+                                }
 
-                    for (state, valve) in io.valves.iter().zip(robot.valves.iter_mut()) {
-                        match state {
-                            IOState::On => valve.set_high(),
-                            IOState::Off => valve.set_low(),
+                                (Rest, _) => {
+                                    buzzer_state = Rest;
+                                }
+
+                                _ => {}
+                            }
+                            let tirette = if robot.tirette.is_high() {
+                                TriggerState::Waiting
+                            } else {
+                                TriggerState::Triggered
+                            };
+
+                            let state = IO {
+                                buzzer: buzzer_state,
+                                tirette,
+                            };
+
+                            if let Ok(data) = state.to_string::<U2048>() {
+                                robot.led_feedback.set_low();
+                                if let Ok(_) = eth.send_udp(
+                                    &mut robot.spi_eth,
+                                    SOCKET_UDP,
+                                    50,
+                                    &ip,
+                                    port,
+                                    &data.as_bytes(),
+                                ) {
+                                    robot.led_feedback.set_low();
+                                } else {
+                                    robot.led_feedback.set_high();
+                                }
+                            } else {
+                                robot.led_feedback.set_high();
+                            }
+                        }
+                        Err(e) => {
+                            robot.led_communication.set_high();
+                            panic!("{:#?}", e)
                         }
                     }
+                }
+                5 => {
+                    match Pneumatic::from_json_slice(&buffer[1..size]) {
+                        Ok(io) => {
+                            robot.led_communication.set_low();
 
-                    match io.pumps {
-                        IOState::On => robot.pumps.set_high(),
-                        IOState::Off => robot.pumps.set_low(),
-                    }
+                            // Gestion des vannes
+                            for (state, valve) in io.valves.iter().zip(robot.valves.iter_mut()) {
+                                match state {
+                                    IOState::On => valve.set_high(),
+                                    IOState::Off => valve.set_low(),
+                                }
+                            }
 
-                    let pumps = if robot.pumps.is_set_high() {
-                        IOState::On
-                    } else {
-                        IOState::Off
-                    };
+                            // Gestion des pompes
+                            match io.pump[0] {
+                                IOState::On => robot.pumps.0.set_high(),
+                                IOState::Off => robot.pumps.0.set_low(),
+                            }
 
-                    let mut valves = [IOState::Off; 8];
-                    for (state, valve) in robot.valves.iter().zip(valves.iter_mut()) {
-                        *valve = if state.is_set_high() {
-                            IOState::On
-                        } else {
-                            IOState::Off
-                        };
-                    }
+                            match io.pump[1] {
+                                IOState::On => robot.pumps.1.set_high(),
+                                IOState::Off => robot.pumps.1.set_low(),
+                            }
 
-                    let tirette = if robot.tirette.is_high() {
-                        TriggerState::Waiting
-                    } else {
-                        TriggerState::Triggered
-                    };
+                            let pumps = [
+                                if robot.pumps.0.is_set_high() {
+                                    IOState::On
+                                } else {
+                                    IOState::Off
+                                },
+                                if robot.pumps.0.is_set_high() {
+                                    IOState::On
+                                } else {
+                                    IOState::Off
+                                },
+                            ];
 
-                    let state = IO {
-                        pumps,
-                        pump_intensity: 0,
-                        tirette,
-                        valves,
-                    };
+                            let mut valves = [IOState::Off; 6];
+                            for (state, valve) in robot.valves.iter().zip(valves.iter_mut()) {
+                                *valve = if state.is_set_high() {
+                                    IOState::On
+                                } else {
+                                    IOState::Off
+                                };
+                            }
 
-                    if let Ok(data) = state.to_string::<U2048>() {
-                        robot.led_feedback.set_low();
-                        if let Ok(_) = eth.send_udp(
-                            &mut robot.spi_eth,
-                            SOCKET_UDP,
-                            50,
-                            &ip,
-                            port,
-                            &data.as_bytes(),
-                        ) {
-                            robot.led_feedback.set_low();
-                        } else {
-                            robot.led_feedback.set_high();
+                            let state = Pneumatic {
+                                pump: pumps,
+                                pump_intensity: [0, 0],
+                                valves,
+                            };
+
+                            if let Ok(data) = state.to_string::<U2048>() {
+                                robot.led_feedback.set_low();
+                                if let Ok(_) = eth.send_udp(
+                                    &mut robot.spi_eth,
+                                    SOCKET_UDP,
+                                    50,
+                                    &ip,
+                                    port,
+                                    &data.as_bytes(),
+                                ) {
+                                    robot.led_feedback.set_low();
+                                } else {
+                                    robot.led_feedback.set_high();
+                                }
+                            } else {
+                                robot.led_feedback.set_high();
+                            }
                         }
-                    } else {
-                        robot.led_feedback.set_high();
+                        Err(e) => {
+                            robot.led_communication.set_high();
+                            panic!("{:#?}", e)
+                        }
                     }
                 }
-                Err(e) => {
-                    robot.led_communication.set_high();
-                    panic!("{:#?}", e)
-                }
+                _ => {}
             }
         }
     }

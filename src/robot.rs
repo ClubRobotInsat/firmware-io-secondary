@@ -8,11 +8,16 @@ use crate::hal::gpio::{
 };
 use crate::hal::prelude::*;
 
+use crate::hal::device::Interrupt::TIM1_UP;
+use crate::hal::device::TIM2;
+use crate::hal::pwm::{Pwm, C1};
 use crate::hal::spi::*;
+use crate::hal::timer::Event;
 use crate::hal::timer::Timer;
 use crate::CortexPeripherals;
 use cortex_m_rt::exception;
 use cortex_m_rt::ExceptionFrame;
+use pwm_speaker::Speaker;
 use stm32f1xx_hal::gpio::PullDown; //  Stack frame for exception handling.
 
 type SpiPins = (
@@ -26,10 +31,11 @@ pub struct Robot<K, P> {
     pub delay: Delay,
     pub led_feedback: PC14<Output<PushPull>>,
     pub led_communication: PC15<Output<PushPull>>,
-    pub pumps: PB0<Output<PushPull>>,
+    pub pumps: (PA4<Output<PushPull>>, PB0<Output<PushPull>>),
     pub valves: [PBx<Output<PushPull>>; 8],
     pub cs: PB13<Output<PushPull>>,
-    pub tirette: PA0<Input<PullDown>>,
+    pub tirette: PB1<Input<PullDown>>,
+    pub speaker: Speaker,
 }
 
 pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Robot<SPI1, SpiPins> {
@@ -77,7 +83,8 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
         gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
     ];
 
-    let pumps = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+    let pump_left = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+    let pump_right = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
 
     {
         // Hardfault LED
@@ -90,7 +97,7 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
     let led_feedback = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
     let led_communication = gpioc.pc15.into_push_pull_output(&mut gpioc.crh);
 
-    let tirette = gpioa.pa0.into_pull_down_input(&mut gpioa.crl);
+    let tirette = gpiob.pb1.into_pull_down_input(&mut gpiob.crl);
 
     let spi = Spi::spi1(
         chip.SPI1,
@@ -105,8 +112,17 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
         &mut rcc.apb2,
     );
 
+    // Speaker
+    let c1 = gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl);
+    let mut speaker_pwm = chip
+        .TIM2
+        .pwm(c1, &mut afio.mapr, 440.hz(), clocks, &mut rcc.apb1);
+    speaker_pwm.enable();
+
     // Clignotement de la led
-    let _ = Timer::tim3(chip.TIM3, 5.hz(), clocks, &mut rcc.apb1);
+    let mut t_led = Timer::tim1(chip.TIM1, 5.hz(), clocks, &mut rcc.apb2);
+    t_led.listen(Event::Update);
+    cortex.NVIC.enable(TIM1_UP);
 
     //  Create a delay timer from the RCC clocks.
     let delay = Delay::new(cortex.SYST, clocks);
@@ -116,24 +132,25 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
         delay,
         led_feedback,
         led_communication,
-        pumps,
+        pumps: (pump_left, pump_right),
         valves: vannes,
         cs,
         tirette,
+        speaker: Speaker::new(speaker_pwm, clocks),
     }
 }
 
 #[interrupt]
-fn TIM3() {
+fn TIM1_UP() {
     static mut TOOGLE: bool = false;
     unsafe {
+        (*f103::TIM1::ptr()).sr.write(|w| w.uif().clear_bit());
         if *TOOGLE {
             (*f103::GPIOC::ptr()).bsrr.write(|w| w.br13().set_bit());
         } else {
             (*f103::GPIOC::ptr()).bsrr.write(|w| w.bs13().set_bit());
         }
         *TOOGLE = !(*TOOGLE);
-        (*f103::TIM3::ptr()).sr.write(|w| w.uif().clear_bit());
     }
 }
 
