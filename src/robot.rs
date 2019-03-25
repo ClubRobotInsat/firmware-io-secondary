@@ -17,28 +17,30 @@ use crate::hal::timer::Timer;
 use crate::CortexPeripherals;
 use cortex_m_rt::exception;
 use cortex_m_rt::ExceptionFrame;
+use embedded_hal::spi::FullDuplex;
 use pwm_speaker::Speaker;
 use stm32f1xx_hal::gpio::PullDown; //  Stack frame for exception handling.
 
-type SpiPins = (
+pub type SpiPins = (
     PA5<Alternate<PushPull>>,
     PA6<Input<Floating>>,
     PA7<Alternate<PushPull>>,
 );
 
-pub struct Robot<K, P> {
-    pub spi_eth: Spi<K, P>,
+pub struct Robot {
     pub delay: Delay,
     pub led_feedback: PC14<Output<PushPull>>,
     pub led_communication: PC15<Output<PushPull>>,
     pub pumps: (PA4<Output<PushPull>>, PB0<Output<PushPull>>),
     pub valves: [PBx<Output<PushPull>>; 8],
-    pub cs: PB13<Output<PushPull>>,
     pub tirette: PB1<Input<PullDown>>,
     pub speaker: Speaker,
 }
 
-pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Robot<SPI1, SpiPins> {
+pub fn init_peripherals(
+    chip: Peripherals,
+    mut cortex: CortexPeripherals,
+) -> (Robot, Spi<SPI1, SpiPins>, PB13<Output<PushPull>>) {
     //  Get the clocks from the STM32 Reset and Clock Control (RCC) and freeze the Flash Access Control Register (ACR).
     let _dbg = chip.DBG;
     // Config des horloges
@@ -127,17 +129,19 @@ pub fn init_peripherals(chip: Peripherals, mut cortex: CortexPeripherals) -> Rob
     //  Create a delay timer from the RCC clocks.
     let delay = Delay::new(cortex.SYST, clocks);
 
-    Robot {
-        spi_eth: spi,
-        delay,
-        led_feedback,
-        led_communication,
-        pumps: (pump_left, pump_right),
-        valves: vannes,
+    (
+        Robot {
+            delay,
+            led_feedback,
+            led_communication,
+            pumps: (pump_left, pump_right),
+            valves: vannes,
+            tirette,
+            speaker: Speaker::new(speaker_pwm, clocks),
+        },
+        spi,
         cs,
-        tirette,
-        speaker: Speaker::new(speaker_pwm, clocks),
-    }
+    )
 }
 
 #[interrupt]
