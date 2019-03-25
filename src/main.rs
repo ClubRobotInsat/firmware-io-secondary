@@ -17,17 +17,20 @@ use crate::hal::spi::Spi;
 use crate::robot::init_peripherals;
 use crate::robot::Robot;
 use crate::robot::SpiPins;
+use core::cmp::min;
 use cortex_m::asm;
 use embedded_hal::spi::FullDuplex;
 use heapless::consts::U2048;
+use librobot::transmission::id::*;
 use librobot::transmission::io::BuzzerState;
 use librobot::transmission::io::Pneumatic;
 use librobot::transmission::{
-    eth::{init_eth, SOCKET_UDP},
+    eth::{init_eth, listen_on, SOCKET_UDP},
     io::{IOState, TriggerState, IO},
     Jsonizable,
 };
 use pwm_speaker::songs::*;
+use w5500::Socket::*;
 
 fn send_tirette_state<T, K>(
     robot: &mut Robot,
@@ -35,7 +38,6 @@ fn send_tirette_state<T, K>(
     eth: &mut W5500,
     buzzer_state: &BuzzerState,
     ip: &IpAddress,
-    port: u16,
 ) where
     Spi<T, K>: FullDuplex<u8>,
 {
@@ -51,13 +53,15 @@ fn send_tirette_state<T, K>(
     };
 
     if let Ok(data) = state.to_string::<U2048>() {
-        let mut new_data: [u8; 2049] = [0u8; 2049];
-        new_data[0] = 4;
-        for (i, b) in data.as_bytes().iter().enumerate() {
-            new_data[i + 1] = *b;
-        }
         robot.led_feedback.set_low();
-        if let Ok(_) = eth.send_udp(spi, SOCKET_UDP, 51, ip, port, &new_data[0..data.len() + 1]) {
+        if let Ok(_) = eth.send_udp(
+            spi,
+            SOCKET_UDP,
+            ELEC_LISTENING_PORT + ID_IO,
+            ip,
+            INFO_LISTENING_PORT + ID_IO,
+            &data.as_bytes(),
+        ) {
             robot.led_feedback.set_low();
         } else {
             robot.led_feedback.set_high();
@@ -72,7 +76,6 @@ fn send_pneumatic_state<T, K>(
     spi: &mut Spi<T, K>,
     eth: &mut W5500,
     ip: &IpAddress,
-    port: u16,
 ) where
     Spi<T, K>: FullDuplex<u8>,
 {
@@ -105,13 +108,14 @@ fn send_pneumatic_state<T, K>(
     };
 
     if let Ok(data) = state.to_string::<U2048>() {
-        robot.led_feedback.set_low();
-        let mut new_data: [u8; 2049] = [0u8; 2049];
-        new_data[0] = 5;
-        for (i, b) in data.as_bytes().iter().enumerate() {
-            new_data[i + 1] = *b;
-        }
-        if let Ok(_) = eth.send_udp(spi, SOCKET_UDP, 51, ip, port, &new_data[0..data.len() + 1]) {
+        if let Ok(_) = eth.send_udp(
+            spi,
+            SOCKET_UDP,
+            ELEC_LISTENING_PORT + ID_PNEUMATIC,
+            ip,
+            INFO_LISTENING_PORT + ID_PNEUMATIC,
+            &data.as_bytes(),
+        ) {
             robot.led_feedback.set_low();
         } else {
             robot.led_feedback.set_high();
@@ -133,7 +137,15 @@ fn main() -> ! {
             &mut eth,
             &mut spi,
             &MacAddress::new(0x02, 0x01, 0x02, 0x03, 0x04, 0x55),
-            &IpAddress::new(192, 168, 1, 4),
+            &IpAddress::new(192, 168, 1, min(ID_PNEUMATIC as u8, ID_IO as u8)),
+        );
+        // IO
+        listen_on(&mut eth, &mut spi, ID_IO + ELEC_LISTENING_PORT, Socket0);
+        listen_on(
+            &mut eth,
+            &mut spi,
+            ID_PNEUMATIC + ELEC_LISTENING_PORT,
+            Socket1,
         );
     }
     let mut buffer = [0u8; 2048];
@@ -151,7 +163,6 @@ fn main() -> ! {
                 &mut eth,
                 &buzzer_state,
                 &IpAddress::new(192, 168, 1, 254),
-                5004,
             )
         } else if robot.tirette.is_high() && tirette_already_detected {
             tirette_already_detected = false;
@@ -161,92 +172,69 @@ fn main() -> ! {
                 &mut eth,
                 &buzzer_state,
                 &IpAddress::new(192, 168, 1, 254),
-                5004,
             )
         }
 
-        if let Ok(Some((ip, port, size))) = eth.try_receive_udp(&mut spi, SOCKET_UDP, &mut buffer) {
-            let id = buffer[0];
-
-            match id {
-                4 => {
-                    use BuzzerState::*;
-                    match IO::from_json_slice(&buffer[1..size]) {
-                        Ok(io) => {
-                            robot.led_communication.set_low();
-                            match (io.buzzer, buzzer_state) {
-                                (PlayErrorSound, Rest) => {
-                                    robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
-                                    buzzer_state = PlayErrorSound;
-                                }
-                                (PlaySuccessSound, Rest) => {
-                                    robot
-                                        .speaker
-                                        .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
-                                    buzzer_state = PlaySuccessSound;
-                                }
-
-                                (Rest, _) => {
-                                    buzzer_state = Rest;
-                                }
-
-                                _ => {}
-                            }
-                            send_tirette_state(
-                                &mut robot,
-                                &mut spi,
-                                &mut eth,
-                                &mut buzzer_state,
-                                &ip,
-                                port,
-                            );
+        if let Ok(Some((ip, _, size))) = eth.try_receive_udp(&mut spi, Socket0, &mut buffer) {
+            use BuzzerState::*;
+            match IO::from_json_slice(&buffer[0..size]) {
+                Ok(io) => {
+                    robot.led_communication.set_low();
+                    match (io.buzzer, buzzer_state) {
+                        (PlayErrorSound, Rest) => {
+                            robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
+                            buzzer_state = PlayErrorSound;
                         }
-                        Err(e) => {
-                            robot.led_communication.set_high();
-                            panic!("{:#?}", e)
+                        (PlaySuccessSound, Rest) => {
+                            robot
+                                .speaker
+                                .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
+                            buzzer_state = PlaySuccessSound;
+                        }
+
+                        (Rest, _) => {
+                            buzzer_state = Rest;
+                        }
+
+                        _ => {}
+                    }
+                    send_tirette_state(&mut robot, &mut spi, &mut eth, &mut buzzer_state, &ip);
+                }
+                Err(e) => {
+                    robot.led_communication.set_high();
+                    panic!("{:#?}", e)
+                }
+            }
+        }
+        if let Ok(Some((ip, _, size))) = eth.try_receive_udp(&mut spi, Socket1, &mut buffer) {
+            match Pneumatic::from_json_slice(&buffer[0..size]) {
+                Ok(pneumatic) => {
+                    robot.led_communication.set_low();
+
+                    // Gestion des vannes
+                    for (state, valve) in pneumatic.valves.iter().zip(robot.valves.iter_mut()) {
+                        match state {
+                            IOState::On => valve.set_high(),
+                            IOState::Off => valve.set_low(),
                         }
                     }
-                }
-                5 => {
-                    match Pneumatic::from_json_slice(&buffer[1..size]) {
-                        Ok(pneumatic) => {
-                            robot.led_communication.set_low();
 
-                            // Gestion des vannes
-                            for (state, valve) in
-                                pneumatic.valves.iter().zip(robot.valves.iter_mut())
-                            {
-                                match state {
-                                    IOState::On => valve.set_high(),
-                                    IOState::Off => valve.set_low(),
-                                }
-                            }
-
-                            // Gestion des pompes
-                            match pneumatic.pump[0] {
-                                IOState::On => robot.pumps.0.set_high(),
-                                IOState::Off => robot.pumps.0.set_low(),
-                            }
-
-                            match pneumatic.pump[1] {
-                                IOState::On => robot.pumps.1.set_high(),
-                                IOState::Off => robot.pumps.1.set_low(),
-                            }
-                            send_pneumatic_state(
-                                &mut robot,
-                                &mut spi,
-                                &mut eth,
-                                &IpAddress::new(192, 168, 1, 254),
-                                5005,
-                            );
-                        }
-                        Err(e) => {
-                            robot.led_communication.set_high();
-                            panic!("{:#?}", e)
-                        }
+                    // Gestion des pompes
+                    match pneumatic.pump[0] {
+                        IOState::On => robot.pumps.0.set_high(),
+                        IOState::Off => robot.pumps.0.set_low(),
                     }
+
+                    match pneumatic.pump[1] {
+                        IOState::On => robot.pumps.1.set_high(),
+                        IOState::Off => robot.pumps.1.set_low(),
+                    }
+                    send_pneumatic_state(&mut robot, &mut spi, &mut eth, &ip);
                 }
-                _ => {}
+                Err(e) => {
+                    robot.led_communication.set_high();
+                    panic!("{:#?}", e)
+                }
             }
         }
     }
