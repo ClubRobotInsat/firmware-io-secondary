@@ -176,13 +176,13 @@ fn main() -> ! {
                             robot.led_communication.set_low();
                             match (io.buzzer, buzzer_state) {
                                 (PlayErrorSound, Rest) => {
-                                    robot
-                                        .speaker
-                                        .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
+                                    robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
                                     buzzer_state = PlayErrorSound;
                                 }
                                 (PlaySuccessSound, Rest) => {
-                                    robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
+                                    robot
+                                        .speaker
+                                        .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
                                     buzzer_state = PlaySuccessSound;
                                 }
 
