@@ -19,14 +19,17 @@ use crate::robot::Robot;
 use crate::robot::SpiPins;
 use core::cmp::min;
 use cortex_m::asm;
+use cortex_m_semihosting::hprintln;
+use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::spi::FullDuplex;
 use heapless::consts::U2048;
+use heapless::{String, Vec};
 use librobot::transmission::id::*;
 use librobot::transmission::io::BuzzerState;
 use librobot::transmission::io::Pneumatic;
 use librobot::transmission::{
     eth::{init_eth, listen_on, SOCKET_UDP},
-    io::{IOState, TriggerState, IO},
+    io::{TriggerState, IO},
     Jsonizable,
 };
 use pwm_speaker::songs::*;
@@ -56,7 +59,7 @@ fn send_tirette_state<T, K>(
         robot.led_feedback.set_low();
         if let Ok(_) = eth.send_udp(
             spi,
-            SOCKET_UDP,
+            Socket0,
             ELEC_LISTENING_PORT + ID_IO,
             ip,
             INFO_LISTENING_PORT + ID_IO,
@@ -79,30 +82,15 @@ fn send_pneumatic_state<T, K>(
 ) where
     Spi<T, K>: FullDuplex<u8>,
 {
-    let pumps = [
-        if robot.pumps.0.is_set_high() {
-            IOState::On
-        } else {
-            IOState::Off
-        },
-        if robot.pumps.0.is_set_high() {
-            IOState::On
-        } else {
-            IOState::Off
-        },
-    ];
+    let pumps = [robot.pumps.0.is_set_high(), robot.pumps.1.is_set_high()];
 
-    let mut valves = [IOState::Off; 6];
+    let mut valves = [true; 6];
     for (state, valve) in robot.valves.iter().zip(valves.iter_mut()) {
-        *valve = if state.is_set_high() {
-            IOState::On
-        } else {
-            IOState::Off
-        };
+        *valve = state.is_set_high();
     }
 
     let state = Pneumatic {
-        pump: pumps,
+        pumps,
         pump_intensity: [0, 0],
         valves,
     };
@@ -110,7 +98,7 @@ fn send_pneumatic_state<T, K>(
     if let Ok(data) = state.to_string::<U2048>() {
         if let Ok(_) = eth.send_udp(
             spi,
-            SOCKET_UDP,
+            Socket1,
             ELEC_LISTENING_PORT + ID_PNEUMATIC,
             ip,
             INFO_LISTENING_PORT + ID_PNEUMATIC,
@@ -153,6 +141,8 @@ fn main() -> ! {
     let mut buzzer_state = BuzzerState::Rest;
 
     let mut tirette_already_detected = false;
+
+    robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
 
     loop {
         if robot.tirette.is_low() && !tirette_already_detected {
@@ -207,33 +197,46 @@ fn main() -> ! {
             }
         }
         if let Ok(Some((ip, _, size))) = eth.try_receive_udp(&mut spi, Socket1, &mut buffer) {
-            match Pneumatic::from_json_slice(&buffer[0..size]) {
+            let mut str_vec: Vec<u8, U2048> = Vec::new();
+            /*hprintln!(
+                "data: {:#x?}",
+                core::str::from_utf8(&buffer[0..(size - 1)]).unwrap()
+            )
+            .unwrap();*/
+            match Pneumatic::from_json_slice(&buffer[0..(size - 1)]) {
                 Ok(pneumatic) => {
                     robot.led_communication.set_low();
 
                     // Gestion des vannes
                     for (state, valve) in pneumatic.valves.iter().zip(robot.valves.iter_mut()) {
-                        match state {
-                            IOState::On => valve.set_high(),
-                            IOState::Off => valve.set_low(),
+                        if *state {
+                            valve.set_high();
+                        } else {
+                            valve.set_low();
                         }
                     }
 
                     // Gestion des pompes
-                    match pneumatic.pump[0] {
-                        IOState::On => robot.pumps.0.set_high(),
-                        IOState::Off => robot.pumps.0.set_low(),
+                    if pneumatic.pumps[0] {
+                        robot.pumps.0.set_high();
+                    } else {
+                        robot.pumps.0.set_low();
                     }
 
-                    match pneumatic.pump[1] {
-                        IOState::On => robot.pumps.1.set_high(),
-                        IOState::Off => robot.pumps.1.set_low(),
+                    if pneumatic.pumps[1] {
+                        robot.pumps.1.set_high();
+                    } else {
+                        robot.pumps.1.set_low();
                     }
+
                     send_pneumatic_state(&mut robot, &mut spi, &mut eth, &ip);
                 }
                 Err(e) => {
                     robot.led_communication.set_high();
-                    panic!("{:#?}", e)
+                    let mut str_vec: Vec<u8, U2048> = Vec::new();
+                    str_vec.extend_from_slice(&buffer[0..size]).unwrap();
+                    asm::bkpt();
+                    panic!("{}, {:#?}", String::from_utf8(str_vec).unwrap(), e)
                 }
             }
         }

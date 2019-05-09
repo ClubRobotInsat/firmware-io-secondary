@@ -41,8 +41,6 @@ pub fn init_peripherals(
     chip: Peripherals,
     mut cortex: CortexPeripherals,
 ) -> (Robot, Spi<SPI1, SpiPins>, PB13<Output<PushPull>>) {
-    //  Get the clocks from the STM32 Reset and Clock Control (RCC) and freeze the Flash Access Control Register (ACR).
-    let _dbg = chip.DBG;
     // Config des horloges
     let mut rcc = chip.RCC.constrain();
     let mut flash = chip.FLASH.constrain();
@@ -75,11 +73,11 @@ pub fn init_peripherals(
     let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
 
     let vannes = [
-        gpiob.pb3.into_push_pull_output(&mut gpiob.crl).downgrade(),
-        gpiob.pb4.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb5.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb6.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb8.into_push_pull_output(&mut gpiob.crh).downgrade(),
+        gpiob.pb10.into_push_pull_output(&mut gpiob.crh).downgrade(),
+        gpiob.pb11.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb12.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb14.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
