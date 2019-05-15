@@ -73,14 +73,14 @@ pub fn init_peripherals(
     let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
 
     let vannes = [
+        gpiob.pb12.into_push_pull_output(&mut gpiob.crh).downgrade(),
+        gpiob.pb14.into_push_pull_output(&mut gpiob.crh).downgrade(),
+        gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb5.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb6.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb8.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb10.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb11.into_push_pull_output(&mut gpiob.crh).downgrade(),
-        gpiob.pb12.into_push_pull_output(&mut gpiob.crh).downgrade(),
-        gpiob.pb14.into_push_pull_output(&mut gpiob.crh).downgrade(),
-        gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
     ];
 
     let pump_left = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
