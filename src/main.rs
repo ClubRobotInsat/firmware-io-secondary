@@ -152,7 +152,7 @@ fn main() -> ! {
 
     robot
         .speaker
-        .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
+        .play_score(&SUCCESS_SONG, &mut robot.delay);
 
     loop {
         //for t in &mut robot.valves {
@@ -217,7 +217,7 @@ fn main() -> ! {
                     send_tirette_state(&mut robot, &mut spi, &mut eth, &mut buzzer_state, &ip);
                     robot.led_communication.set_low();
                 }
-                Err(e) => {
+                Err(_) => {
                     robot.led_communication.set_high();
                     //panic!("{:#?}", e)
                 }
