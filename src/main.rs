@@ -224,15 +224,15 @@ fn main() -> ! {
             }
         }
         if let Ok(Some((ip, _, size))) = eth.try_receive_udp(&mut spi, Socket1, &mut buffer) {
-            hprintln!(
+            /*hprintln!(
                 "PNEUM data: {:#x?}",
-                core::str::from_utf8(&buffer[0..(size - 1)]).unwrap()
+                core::str::from_utf8(&buffer[0..size]).unwrap()
             )
-            .unwrap();
-            hprintln!("1.0\n").unwrap();
-            match Pneumatic::from_json_slice(&buffer[0..(size - 1)]) {
+            .unwrap();*/
+            //hprintln!("1.0\n").unwrap();
+            match Pneumatic::from_json_slice(&buffer[0..size]) {
                 Ok(pneumatic) => {
-                    hprintln!("1.1\n").unwrap();
+                    //hprintln!("1.1\n").unwrap();
                     robot.led_communication.set_low();
 
                     // Gestion des vannes
