@@ -6,7 +6,7 @@ use crate::f103::Peripherals;
 use crate::hal::stm32 as f103;
 use cortex_m::Peripherals as CortexPeripherals;
 use cortex_m_rt::entry;
-use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin};
+use embedded_hal::digital::{InputPin, OutputPin, StatefulOutputPin, ToggleableOutputPin};
 #[allow(unused_imports)]
 use panic_semihosting;
 use stm32f1xx_hal as hal;
@@ -55,7 +55,7 @@ fn send_tirette_state<T, K>(
     };
 
     if let Ok(data) = state.to_string::<U2048>() {
-        robot.led_feedback.set_low();
+        robot.led_communication.set_low();
         if let Ok(_) = eth.send_udp(
             spi,
             Socket0,
@@ -63,13 +63,7 @@ fn send_tirette_state<T, K>(
             ip,
             INFO_LISTENING_PORT + ID_IO,
             &data.as_bytes(),
-        ) {
-            robot.led_feedback.set_low();
-        } else {
-            robot.led_feedback.set_high();
-        }
-    } else {
-        robot.led_feedback.set_high();
+        ) {}
     }
 }
 
@@ -111,14 +105,20 @@ fn send_pneumatic_state<T, K>(
             ip,
             INFO_LISTENING_PORT + ID_PNEUMATIC,
             &data.as_bytes(),
-        ) {
-            robot.led_feedback.set_low();
-        } else {
-            robot.led_feedback.set_high();
-        }
-    } else {
-        robot.led_feedback.set_high();
+        ) {}
     }
+}
+
+fn toogle<T>(state: &mut bool, pin: &mut T)
+where
+    T: OutputPin,
+{
+    if (*state) {
+        pin.set_high();
+    } else {
+        pin.set_low();
+    }
+    *state = !(*state);
 }
 
 #[entry]
@@ -150,9 +150,11 @@ fn main() -> ! {
 
     let mut tirette_already_detected = false;
 
-    robot
-        .speaker
-        .play_score(&SUCCESS_SONG, &mut robot.delay);
+    let mut led_state = false;
+
+    robot.led_communication.set_low();
+
+    robot.speaker.play_score(&SUCCESS_SONG, &mut robot.delay);
 
     loop {
         //for t in &mut robot.valves {
@@ -194,17 +196,14 @@ fn main() -> ! {
 
             match IO::from_json_slice(&buffer[0..size]) {
                 Ok(io) => {
-                    hprintln!("2\n").unwrap();
-                    robot.led_communication.set_low();
+                    toogle(&mut led_state, &mut robot.led_communication);
                     match (io.buzzer, buzzer_state) {
                         (PlayErrorSound, Rest) => {
-                            robot.speaker.play_score(&LAVENTURIER, &mut robot.delay);
+                            robot.speaker.play_score(&FAILURE_SONG, &mut robot.delay);
                             buzzer_state = PlayErrorSound;
                         }
                         (PlaySuccessSound, Rest) => {
-                            robot
-                                .speaker
-                                .play_score(&MARIO_THEME_INTRO, &mut robot.delay);
+                            robot.speaker.play_score(&SUCCESS_SONG, &mut robot.delay);
                             buzzer_state = PlaySuccessSound;
                         }
 
@@ -215,10 +214,8 @@ fn main() -> ! {
                         _ => {}
                     }
                     send_tirette_state(&mut robot, &mut spi, &mut eth, &mut buzzer_state, &ip);
-                    robot.led_communication.set_low();
                 }
                 Err(_) => {
-                    robot.led_communication.set_high();
                     //panic!("{:#?}", e)
                 }
             }
@@ -233,9 +230,10 @@ fn main() -> ! {
             match Pneumatic::from_json_slice(&buffer[0..size]) {
                 Ok(pneumatic) => {
                     //hprintln!("1.1\n").unwrap();
-                    robot.led_communication.set_low();
 
                     // Gestion des vannes
+                    toogle(&mut led_state, &mut robot.led_communication);
+
                     for (state, valve) in pneumatic.valves.iter().zip(robot.valves.iter_mut()) {
                         if let IOState::On = state {
                             valve.set_high();
@@ -261,7 +259,6 @@ fn main() -> ! {
                 }
                 Err(_e) => {
                     hprintln!("1.2\n").unwrap();
-                    robot.led_communication.set_high();
                     //panic!("{}, {:#?}", String::from_utf8(str_vec).unwrap(), e)
                 }
             }

@@ -29,8 +29,7 @@ pub type SpiPins = (
 
 pub struct Robot {
     pub delay: Delay,
-    pub led_feedback: PC14<Output<PushPull>>,
-    pub led_communication: PC15<Output<PushPull>>,
+    pub led_communication: PC14<Output<PushPull>>,
     pub pumps: (PA4<Output<PushPull>>, PB0<Output<PushPull>>),
     pub valves: [PBx<Output<PushPull>>; 8],
     pub tirette: PB1<Input<PullDown>>,
@@ -88,14 +87,11 @@ pub fn init_peripherals(
 
     {
         // Hardfault LED
-        let mut pin = gpiob.pb7.into_push_pull_output(&mut gpiob.crl);
+        let mut pin = gpioc.pc15.into_push_pull_output(&mut gpioc.crh);
         pin.set_low();
         // Blinking led
-        let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
-        led.set_low();
     }
-    let led_feedback = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
-    let led_communication = gpioc.pc15.into_push_pull_output(&mut gpioc.crh);
+    let led_communication = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
 
     let tirette = gpiob.pb1.into_pull_down_input(&mut gpiob.crl);
 
@@ -130,7 +126,6 @@ pub fn init_peripherals(
     (
         Robot {
             delay,
-            led_feedback,
             led_communication,
             pumps: (pump_left, pump_right),
             valves: vannes,
@@ -159,7 +154,7 @@ fn TIM1_UP() {
 #[exception]
 fn HardFault(ef: &ExceptionFrame) -> ! {
     unsafe {
-        (*f103::GPIOB::ptr()).bsrr.write(|w| w.br7().set_bit());
+        (*f103::GPIOC::ptr()).bsrr.write(|w| w.br15().set_bit());
     }
     panic!("Hard fault: {:#?}", ef);
 }
@@ -169,7 +164,7 @@ fn HardFault(ef: &ExceptionFrame) -> ! {
 #[exception]
 fn DefaultHandler(irqn: i16) {
     unsafe {
-        (*f103::GPIOB::ptr()).bsrr.write(|w| w.br7().set_bit());
+        (*f103::GPIOC::ptr()).bsrr.write(|w| w.br15().set_bit());
     }
     panic!("Unhandled exception (IRQn = {})", irqn);
 }
