@@ -75,14 +75,13 @@ fn send_pneumatic_state<T, K>(
 ) where
     Spi<T, K>: FullDuplex<u8>,
 {
-    let pumps = match (robot.pumps.0.is_set_high(), robot.pumps.1.is_set_high()) {
-        (true, true) => [IOState::On, IOState::On],
-        (true, false) => [IOState::On, IOState::Off],
-        (false, true) => [IOState::Off, IOState::On],
-        (false, false) => [IOState::Off, IOState::Off],
+    let pump = if robot.pump.is_set_high() {
+        IOState::On
+    } else {
+        IOState::Off
     };
 
-    let mut valves = [IOState::On; 6];
+    let mut valves = [IOState::On; 4];
     for (state, valve) in robot.valves.iter().zip(valves.iter_mut()) {
         *valve = if state.is_set_high() {
             IOState::On
@@ -91,11 +90,7 @@ fn send_pneumatic_state<T, K>(
         };
     }
 
-    let state = Pneumatic {
-        pumps,
-        pump_intensity: [0, 0],
-        valves,
-    };
+    let state = Pneumatic { pump, valves };
 
     if let Ok(data) = state.to_string::<U2048>() {
         if let Ok(_) = eth.send_udp(
@@ -113,7 +108,7 @@ fn toogle<T>(state: &mut bool, pin: &mut T)
 where
     T: OutputPin,
 {
-    if (*state) {
+    if *state {
         pin.set_high();
     } else {
         pin.set_low();
@@ -157,15 +152,6 @@ fn main() -> ! {
     robot.speaker.play_score(&SUCCESS_SONG, &mut robot.delay);
 
     loop {
-        //for t in &mut robot.valves {
-        //    t.set_high();
-        //    robot.delay.delay_ms(150u32);
-        //}
-        //for t in &mut robot.valves {
-        //    t.set_low();
-        //    robot.delay.delay_ms(150u32);
-        //}
-
         if robot.tirette.is_low() && !tirette_already_detected {
             tirette_already_detected = true;
             send_tirette_state(
@@ -188,12 +174,13 @@ fn main() -> ! {
 
         if let Ok(Some((ip, _, size))) = eth.try_receive_udp(&mut spi, Socket0, &mut buffer) {
             use BuzzerState::*;
+            /*S
             hprintln!(
                 "IO data: {:#x?}",
                 core::str::from_utf8(&buffer[0..(size - 1)]).unwrap()
             )
             .unwrap();
-
+            */
             match IO::from_json_slice(&buffer[0..size]) {
                 Ok(io) => {
                     toogle(&mut led_state, &mut robot.led_communication);
@@ -243,22 +230,16 @@ fn main() -> ! {
                     }
 
                     // Gestion des pompes
-                    if let IOState::On = pneumatic.pumps[0] {
-                        robot.pumps.0.set_high();
+                    if let IOState::On = pneumatic.pump {
+                        robot.pump.set_high();
                     } else {
-                        robot.pumps.0.set_low();
-                    }
-
-                    if let IOState::On = pneumatic.pumps[1] {
-                        robot.pumps.1.set_high();
-                    } else {
-                        robot.pumps.1.set_low();
+                        robot.pump.set_low();
                     }
 
                     send_pneumatic_state(&mut robot, &mut spi, &mut eth, &ip);
                 }
                 Err(_e) => {
-                    hprintln!("1.2\n").unwrap();
+                    //hprintln!("1.2\n").unwrap();
                     //panic!("{}, {:#?}", String::from_utf8(str_vec).unwrap(), e)
                 }
             }

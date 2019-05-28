@@ -30,8 +30,8 @@ pub type SpiPins = (
 pub struct Robot {
     pub delay: Delay,
     pub led_communication: PC14<Output<PushPull>>,
-    pub pumps: (PA4<Output<PushPull>>, PB0<Output<PushPull>>),
-    pub valves: [PBx<Output<PushPull>>; 8],
+    pub pump: PA4<Output<PushPull>>,
+    pub valves: [PBx<Output<PushPull>>; 4],
     pub tirette: PB1<Input<PullDown>>,
     pub speaker: Speaker,
 }
@@ -76,20 +76,23 @@ pub fn init_peripherals(
         gpiob.pb14.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb5.into_push_pull_output(&mut gpiob.crl).downgrade(),
+        /*
         gpiob.pb6.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb8.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb10.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb11.into_push_pull_output(&mut gpiob.crh).downgrade(),
+        */
     ];
 
-    let pump_left = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
-    let pump_right = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
+    let pump = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+    //let pump_right = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
 
     {
         // Hardfault LED
         let mut pin = gpioc.pc15.into_push_pull_output(&mut gpioc.crh);
         pin.set_low();
         // Blinking led
+        let mut _led = gpioc.pc13.into_push_pull_output(&mut gpioc.crh);
     }
     let led_communication = gpioc.pc14.into_push_pull_output(&mut gpioc.crh);
 
@@ -127,7 +130,7 @@ pub fn init_peripherals(
         Robot {
             delay,
             led_communication,
-            pumps: (pump_left, pump_right),
+            pump,
             valves: vannes,
             tirette,
             speaker: Speaker::new(speaker_pwm, clocks),
@@ -154,7 +157,7 @@ fn TIM1_UP() {
 #[exception]
 fn HardFault(ef: &ExceptionFrame) -> ! {
     unsafe {
-        (*f103::GPIOC::ptr()).bsrr.write(|w| w.br15().set_bit());
+        (*f103::GPIOC::ptr()).bsrr.write(|w| w.bs15().set_bit());
     }
     panic!("Hard fault: {:#?}", ef);
 }
