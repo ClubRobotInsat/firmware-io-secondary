@@ -127,8 +127,8 @@ fn main() -> ! {
         init_eth(
             &mut eth,
             &mut spi,
-            &MacAddress::new(0x02, 0x01, 0x02, 0x03, 0x04, 0x55),
-            &IpAddress::new(192, 168, 1, min(ID_PNEUMATIC as u8, ID_IO as u8)),
+            min(ID_PNEUMATIC as u8, ID_IO as u8),
+            min(ID_PNEUMATIC as u8, ID_IO as u8),
         );
         // IO
         listen_on(&mut eth, &mut spi, ID_IO + ELEC_LISTENING_PORT, Socket0);
