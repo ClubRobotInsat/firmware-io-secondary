@@ -30,7 +30,7 @@ pub type SpiPins = (
 pub struct Robot {
     pub delay: Delay,
     pub led_communication: PC14<Output<PushPull>>,
-    pub pump: PA15<Output<PushPull>>,
+    pub pump: PB5<Output<PushPull>>,
     pub valves: PBx<Output<PushPull>>,
     pub tirette: PB1<Input<PullDown>>,
     pub speaker: Speaker,
@@ -94,7 +94,7 @@ pub fn init_peripherals(
         */
     ;
 
-    let pump = gpioa.pa15.into_push_pull_output(&mut gpioa.crh);
+    let pump = gpiob.pb5.into_push_pull_output(&mut gpiob.crl);
     //let pump_right = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
 
     {
@@ -119,6 +119,16 @@ pub fn init_peripherals(
         1.mhz(),
         clocks,
         &mut rcc.apb2,
+    );
+
+    // Capteur couleur
+    let pwm_input = p.TIM2.pwm_input(
+        (pa0, pa1),
+        &mut rcc.apb1,
+        &mut afio.mapr,
+        &mut dbg,
+        &clocks,
+        Configuration::Frequency(10.khz()),
     );
 
     // Speaker

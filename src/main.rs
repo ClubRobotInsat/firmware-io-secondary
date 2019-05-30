@@ -180,7 +180,7 @@ fn main() -> ! {
                 &mut spi,
                 &mut eth,
                 &buzzer_state,
-                &IpAddress::new(192, 168, 1, 254),
+                &get_main_computer_ip(),
             )
         } else if robot.tirette.is_high() && tirette_already_detected {
             tirette_already_detected = false;
@@ -189,7 +189,7 @@ fn main() -> ! {
                 &mut spi,
                 &mut eth,
                 &buzzer_state,
-                &IpAddress::new(192, 168, 1, 254),
+                &get_main_computer_ip(),
             )
         }
 
