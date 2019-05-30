@@ -30,10 +30,14 @@ pub type SpiPins = (
 pub struct Robot {
     pub delay: Delay,
     pub led_communication: PC14<Output<PushPull>>,
-    pub pump: PA4<Output<PushPull>>,
-    pub valves: [PBx<Output<PushPull>>; 4],
+    pub pump: PA15<Output<PushPull>>,
+    pub valves: PBx<Output<PushPull>>,
     pub tirette: PB1<Input<PullDown>>,
     pub speaker: Speaker,
+    pub s0: PB9<Output<PushPull>>,
+    pub s1: PB8<Output<PushPull>>,
+    pub s2: PB7<Output<PushPull>>,
+    pub s3: PB6<Output<PushPull>>,
 }
 
 pub fn init_peripherals(
@@ -71,20 +75,26 @@ pub fn init_peripherals(
     let miso = gpioa.pa6.into_floating_input(&mut gpioa.crl);
     let mosi = gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl);
 
-    let vannes = [
-        gpiob.pb12.into_push_pull_output(&mut gpiob.crh).downgrade(),
+    let s0 = gpiob.pb9.into_push_pull_output(&mut gpiob.crh);
+    let s1 = gpiob.pb8.into_push_pull_output(&mut gpiob.crh);
+    let s2 = gpiob.pb7.into_push_pull_output(&mut gpiob.crl);
+    let s3 = gpiob.pb6.into_push_pull_output(&mut gpiob.crl);
+
+    let vannes =
+        gpiob.pb12.into_push_pull_output(&mut gpiob.crh).downgrade()
+    /*
         gpiob.pb14.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb15.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb5.into_push_pull_output(&mut gpiob.crl).downgrade(),
-        /*
+
         gpiob.pb6.into_push_pull_output(&mut gpiob.crl).downgrade(),
         gpiob.pb8.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb10.into_push_pull_output(&mut gpiob.crh).downgrade(),
         gpiob.pb11.into_push_pull_output(&mut gpiob.crh).downgrade(),
         */
-    ];
+    ;
 
-    let pump = gpioa.pa4.into_push_pull_output(&mut gpioa.crl);
+    let pump = gpioa.pa15.into_push_pull_output(&mut gpioa.crh);
     //let pump_right = gpiob.pb0.into_push_pull_output(&mut gpiob.crl);
 
     {
@@ -134,6 +144,10 @@ pub fn init_peripherals(
             valves: vannes,
             tirette,
             speaker: Speaker::new(speaker_pwm, clocks),
+            s0,
+            s1,
+            s2,
+            s3,
         },
         spi,
         cs,

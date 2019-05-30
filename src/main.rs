@@ -24,6 +24,7 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::spi::FullDuplex;
 use heapless::consts::U2048;
 use heapless::{String, Vec};
+use librobot::color::Color;
 use librobot::transmission::id::*;
 use librobot::transmission::io::IOState;
 use librobot::transmission::{
@@ -32,7 +33,14 @@ use librobot::transmission::{
     Jsonizable,
 };
 use pwm_speaker::songs::*;
+use tcs3200::*;
 use w5500::Socket::*;
+
+fn send_color_state<T, K>(robot: &mut Robot) {
+
+    //let color = hz_to_color();
+
+}
 
 fn send_tirette_state<T, K>(
     robot: &mut Robot,
@@ -82,13 +90,13 @@ fn send_pneumatic_state<T, K>(
     };
 
     let mut valves = [IOState::On; 4];
-    for (state, valve) in robot.valves.iter().zip(valves.iter_mut()) {
-        *valve = if state.is_set_high() {
-            IOState::On
-        } else {
-            IOState::Off
-        };
-    }
+    let valve = if robot.valves.is_set_high() {
+        IOState::On
+    } else {
+        IOState::Off
+    };
+
+    valves[0] = valve;
 
     let state = Pneumatic { pump, valves };
 
@@ -120,38 +128,51 @@ where
 fn main() -> ! {
     let chip = Peripherals::take().unwrap();
     let cortex = CortexPeripherals::take().unwrap();
+
     let (mut robot, mut spi, mut cs): (Robot, Spi<SPI1, SpiPins>, _) =
         init_peripherals(chip, cortex);
-    let mut eth = { W5500::new(&mut spi, &mut cs) };
-    {
-        init_eth(
-            &mut eth,
-            &mut spi,
-            min(ID_PNEUMATIC as u8, ID_IO as u8),
-            min(ID_PNEUMATIC as u8, ID_IO as u8),
-        );
-        // IO
-        listen_on(&mut eth, &mut spi, ID_IO + ELEC_LISTENING_PORT, Socket0);
-        listen_on(
-            &mut eth,
-            &mut spi,
-            ID_PNEUMATIC + ELEC_LISTENING_PORT,
-            Socket1,
-        );
-    }
-    let mut buffer = [0u8; 2048];
+    /*
+        let mut eth = { W5500::new(&mut spi, &mut cs) };
+        {
+            init_eth(
+                &mut eth,
+                &mut spi,
+                min(ID_PNEUMATIC as u8, ID_IO as u8),
+                min(ID_PNEUMATIC as u8, ID_IO as u8),
+            );
+            // IO
+            listen_on(&mut eth, &mut spi, ID_IO + ELEC_LISTENING_PORT, Socket0);
+            listen_on(
+                &mut eth,
+                &mut spi,
+                ID_PNEUMATIC + ELEC_LISTENING_PORT,
+                Socket1,
+            );
+            listen_on(&mut eth, &mut spi, ID_COLOR + ELEC_LISTENING_PORT, Socket2)
+        }
 
-    let mut buzzer_state = BuzzerState::Rest;
+        let mut buffer = [0u8; 2048];
 
-    let mut tirette_already_detected = false;
+        let mut buzzer_state = BuzzerState::Rest;
 
-    let mut led_state = false;
+        let mut tirette_already_detected = false;
 
-    robot.led_communication.set_low();
+        let mut led_state = false;
 
-    robot.speaker.play_score(&SUCCESS_SONG, &mut robot.delay);
+        robot.led_communication.set_low();
 
+        robot.speaker.play_score(&SUCCESS_SONG, &mut robot.delay);
+    */
     loop {
+        robot.pump.set_high();
+        robot.valves.set_high();
+        robot.delay.delay_ms(2000u32);
+
+        robot.pump.set_low();
+        robot.valves.set_low();
+        robot.delay.delay_ms(2000u32);
+
+        /*
         if robot.tirette.is_low() && !tirette_already_detected {
             tirette_already_detected = true;
             send_tirette_state(
@@ -221,12 +242,8 @@ fn main() -> ! {
                     // Gestion des vannes
                     toogle(&mut led_state, &mut robot.led_communication);
 
-                    for (state, valve) in pneumatic.valves.iter().zip(robot.valves.iter_mut()) {
-                        if let IOState::On = state {
-                            valve.set_high();
-                        } else {
-                            valve.set_low();
-                        }
+                    if let IOState::On = pneumatic.valves[0] {
+                        robot.valves.set_high();
                     }
 
                     // Gestion des pompes
@@ -244,5 +261,6 @@ fn main() -> ! {
                 }
             }
         }
+        */
     }
 }

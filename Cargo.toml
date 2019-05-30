@@ -17,6 +17,7 @@ librobot = {git="https://github.com/ClubRobotInsat/librobot", default-features=f
 w5500 = "0.1.5"
 heapless = "0.4.2"
 pwm-speaker = {git="https://github.com/gbip/pwm-speaker" }
+tcs3200 = {git="https://github.com/gbip/tcs3200/"}
 
 [dependencies.arrayvec]
 default-features = false
@@ -55,5 +56,4 @@ opt-level = 3
 
 [features]
 
-primary = ["librobot/primary"]
 secondary = ["librobot/secondary"]
